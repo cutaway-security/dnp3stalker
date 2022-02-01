@@ -1,3 +1,6 @@
+###############################
+# Import Python modules
+###############################
 import sys
 import serial
 import time
@@ -108,6 +111,8 @@ FC_RESP                   = '81'
 FC_UNSOL_RESP             = '82'
 FC_AUTH_RESP              = '83'
 
+TCAC_FIRST_FIN            = 'C0C0'
+
 
 # Broadcast Commands
 COLD_RESTART_BROADCAST = '056408C4FFFFFFFF4451C0C00D9C86'
@@ -117,6 +122,9 @@ LINK_STATUS_BROADCAST  = '056405C9FFFFFFFF46C9'
 LINK_STATUS_DIRECT      = build_dnp_header(DNP_HEADER,src_address,dst_address,DLLCC_P_REQUEST_LINK_STATUS)
 RESET_LINK_STATE_DIRECT = build_dnp_header(DNP_HEADER,src_address,dst_address,DLLCC_P_RESET_LINK_STATES)
 TEST_LINK_STATE_DIRECT  = build_dnp_header(DNP_HEADER,src_address,dst_address,DLLCC_P_TEST_LINK_STATES)
+UNCONFIRMED_USER_DATA   = build_dnp_header(DNP_HEADER,src_address,dst_address,DLLCC_P_UNCONFIRMED_USER_DATA)
+COLD_RESTART_OBJ        = build_dnp_object(TCAC_FIRST_FIN + FC_COLD_RESTART)
+WARM_RESTART_OBJ        = build_dnp_object(TCAC_FIRST_FIN + FC_WARM_RESTART)
 
 # Wrapper for sending broadcast messages
 # s = open serial port
@@ -132,12 +140,17 @@ def send_broadcast(s, cmd):
 # s = open serial port
 # cmd = byte string built from build_dnp_header function
 # cmd = byte string built from build_dnp_object
-def send_direct(s, cmd, obj=''):
+def send_direct(s, cmd, obj=b''):
     # If there are DNP3 objects, update the length byte
     # NOTE: DNP3 objects should be completely formed with CRC
     len_index = 2
     if obj:
-        cmd = cmd[:index] + (cmd[index] + len(obj)).to_bytes(1,'little') + cmd[index + 1:]
+        # using a bytearray might be more understandable
+        # Compute new length byte and remove CRC from header
+        cmd = cmd[:len_index] + (cmd[len_index] + (len(obj) - 2)).to_bytes(1,'little') + cmd[len_index + 1:-2]
+        # Recompute CRC and update command
+        crc    = gen_crc(cmd)
+        cmd = cmd + crc
     s.write(cmd + obj)
     time.sleep(1)
     r = s.read(size=200)
@@ -156,8 +169,23 @@ serialPort = serial.Serial(port=port, baudrate=baudrate,
                                 bytesize=bytesize, timeout=timeout, stopbits=stopbits)
 response = b''
 
+print('Starting DNP3 Stalker. Cntl-C to stop sending commands.\n')
 while True:
     try:
+
+        if len(sys.argv) < 2: 
+            print('    Provide a command. Read the code.\n')
+            break
+        if sys.argv[1] == 'COLD_BROADCAST': send_broadcast(serialPort, COLD_RESTART_BROADCAST)
+        if sys.argv[1] == 'LINK_BROADCAST': send_broadcast(serialPort, LINK_STATUS_BROADCAST)
+        if sys.argv[1] == 'LINK_STAT': send_direct(serialPort, LINK_STATUS_DIRECT)
+        if sys.argv[1] == 'COLD_RESTART': send_direct(serialPort, UNCONFIRMED_USER_DATA, obj=COLD_RESTART_OBJ)
+        if sys.argv[1] == 'WARM_RESTART': send_direct(serialPort, UNCONFIRMED_USER_DATA, obj=WARM_RESTART_OBJ)
+        time.sleep(1)
+
+
+        # TODO: Remove old methods
+        '''
         serialPort.write(bytes.fromhex(COLD_RESTART_BROADCAST))
         time.sleep(1)
         response = serialPort.read(size=200)
@@ -166,12 +194,10 @@ while True:
         serialPort.write(build_dnp_data_header(DNP_HEADER,src_address,dst_address,'C9'))
         print("%s"%(build_dnp_data_header(DNP_HEADER,src_address,dst_address,'C9').hex()))
         time.sleep(1)
-        # serialPort.reset_input_buffer()
-        # serialPort.reset_output_buffer()
-        # serialString = serialPort.read(10).hex()
         response = serialPort.read(size=200)
         if response: print(response)
         time.sleep(1)
+        '''
     except KeyboardInterrupt:
         break
 
