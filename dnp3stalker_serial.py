@@ -1,10 +1,14 @@
 ###############################
 # Import Python modules
 ###############################
-import sys
+import sys,os
+# NOTE: Uncomment these lines if you are putting the modules in the local directory
+#sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'pyserial.serial'))
+#sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'crcmod'))
 import serial
-import time
 import crcmod.predefined
+import time
+
 
 ####################
 # DNP Command Setup
